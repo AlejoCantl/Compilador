@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from lexer import tokens
+from lexer import tokens, analizador_lexico
 
 class Compilador:
     def __init__(self):
@@ -30,8 +30,9 @@ class Compilador:
     def analizar(self, codigo):
         """Analiza el código y retorna los resultados"""
         self.reset()
+        analizador_lexico.lineno = 1  # Resetear el conteo de líneas
         try:
-            resultado = self.parser.parse(codigo, lexer=None)
+            resultado = self.parser.parse(codigo, lexer=analizador_lexico)
             return {
                 'exito': True,
                 'resultado': resultado,
@@ -49,7 +50,7 @@ class Compilador:
     
     # ============ VALIDACIÓN DE TIPOS ============
     def obtener_tipo_expresion(self, expresion):
-        """Determina el tipo de una expresión"""
+        """Determina el tipo de una expresión con validación estricta"""
         if expresion[0] == 'numero':
             valor = expresion[1]
             return 'Entero' if isinstance(valor, int) else 'Real'
@@ -62,18 +63,41 @@ class Compilador:
             tipo_captura = expresion[1]
             parametro = expresion[2]
             tipo_parametro = self.obtener_tipo_expresion(parametro)
-            
+        
             if tipo_captura == 'Entero' and tipo_parametro != 'Entero':
                 return f'Error: Captura.Entero espera Entero, no {tipo_parametro}'
             elif tipo_captura == 'Real' and tipo_parametro not in ['Entero', 'Real']:
                 return f'Error: Captura.Real espera número, no {tipo_parametro}'
             elif tipo_captura == 'Texto' and tipo_parametro != 'Texto':
                 return f'Error: Captura.Texto espera texto, no {tipo_parametro}'
-            
-            return tipo_captura
-        elif expresion[0] == 'operacion_binaria':
-            return 'Real'
         
+            return tipo_captura
+
+        elif expresion[0] == 'operacion_binaria':
+            op, izq, der = expresion[1], expresion[2], expresion[3]
+            tipo_izq = self.obtener_tipo_expresion(izq)
+            tipo_der = self.obtener_tipo_expresion(der)
+
+            # Si ya hay error en subexpresiones
+            if 'Error:' in str(tipo_izq) or 'Error:' in str(tipo_der):
+                return tipo_izq if 'Error:' in str(tipo_izq) else tipo_der
+
+            # Validar suma con texto (solo permitida entre Texto + Texto)
+            if op == '+':
+                if tipo_izq == 'Texto' or tipo_der == 'Texto':
+                    if tipo_izq == 'Texto' and tipo_der == 'Texto':
+                        return 'Texto'
+                    else:
+                        return f'Error: No puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
+                else:
+                    # Ambos números → resultado es Real
+                    return 'Real'
+            else:
+                # Para -, *, / → solo números
+                if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
+                    return f'Error: Operación {op} solo entre números, no {tipo_izq} y {tipo_der}'
+                return 'Real'
+
         return 'Desconocido'
     
     def tipos_compatibles(self, tipo_declarado, tipo_expresion):
@@ -83,7 +107,7 @@ class Compilador:
         
         compatibilidad = {
             'Entero': ['Entero'],
-            'Real': ['Entero', 'Real'],  
+            'Real': ['Entero', 'Real'],
             'Texto': ['Texto']
         }
         return tipo_expresion in compatibilidad.get(tipo_declarado, [])
@@ -141,7 +165,7 @@ class Compilador:
                 self.agregar_mensaje('error', linea, tipo_expresion)
                 t[0] = None
             elif not self.tipos_compatibles(tipo_declarado, tipo_expresion):
-                self.agregar_mensaje('error', linea, 
+                self.agregar_mensaje('error', linea,
                     f"¡Eso no cuadra parce! No puedes meter {tipo_expresion} en '{var}' que es {tipo_declarado}")
                 t[0] = None
             else:

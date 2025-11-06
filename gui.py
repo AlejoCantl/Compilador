@@ -150,7 +150,7 @@ class CompiladorGUI:
                                      font=('Arial', 10), bg='#d1d5db', 
                                      justify=tk.LEFT, anchor=tk.W)
         self.resumen_label.pack(fill=tk.X, padx=10, pady=10)
-    
+
     def analizar_codigo(self):
         """Ejecuta el análisis del código"""
         codigo = self.codigo_text.get('1.0', tk.END)

@@ -1,7 +1,7 @@
+# FILE: lexer.py (updated)
 import ply.lex as lex
 
 # ----------------------- TOKENS -----------------------------
-
 tokens = (
     'IGUAL', 'MAS', 'MENOS', 'POR', 'DIVIDIDO',
     'NUMERO_ENTERO', 'NUMERO_REAL', 'IDENTIFICADOR',
@@ -21,7 +21,6 @@ reservadas = {
 tokens = tokens + tuple(reservadas.values())
 
 # -------------EXPRESIONES REGULARES--------------------
-
 t_IGUAL = r'='
 t_MAS = r'\+'
 t_MENOS = r'-'
@@ -32,11 +31,9 @@ t_PARENTESIS_DER = r'\)'
 t_PUNTO_Y_COMA = r';'
 t_COMA = r','
 t_PUNTO = r'\.'
-
 t_ignore = ' \t'
 
 # -------------------REGLAS DE TOKENS-------------------------
-
 def t_IDENTIFICADOR(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
     t.type = reservadas.get(t.value, 'IDENTIFICADOR')
@@ -70,7 +67,7 @@ def t_nueva_linea(t):
     t.lexer.lineno += len(t.value)
 
 def t_error(t):
-    print(f"⚠️  Carácter ilegal: '{t.value[0]}'")
+    print(f"⚠️ Carácter ilegal: '{t.value[0]}'")
     t.lexer.skip(1)
 
 # Construcción del analizador léxico
