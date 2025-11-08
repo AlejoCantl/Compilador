@@ -5,7 +5,7 @@ class Compilador:
     def __init__(self):
         self.tabla_simbolos = {}
         self.mensajes_consola = []
-        self.parser = yacc.yacc(module=self)
+        self.parser = yacc.yacc(module=self, debug=False, write_tables=False)
     tokens = tokens
     
     def reset(self):
@@ -30,9 +30,9 @@ class Compilador:
     def analizar(self, codigo):
         """Analiza el código y retorna los resultados"""
         self.reset()
-        analizador_lexico.lineno = 1  # Resetear el conteo de líneas
+        analizador_lexico.lineno = 1
         try:
-            resultado = self.parser.parse(codigo, lexer=analizador_lexico)
+            resultado = self.parser.parse(codigo, lexer=analizador_lexico, tracking=True)
             return {
                 'exito': True,
                 'resultado': resultado,
@@ -40,7 +40,7 @@ class Compilador:
                 'estadisticas': self.obtener_estadisticas()
             }
         except Exception as e:
-            self.agregar_mensaje('error', '?', f"Error crítico: {str(e)}")
+            self.agregar_mensaje('error', '?', f"¡Qué desastre! Algo se dañó en el análisis: {str(e)}")
             return {
                 'exito': False,
                 'resultado': None,
@@ -58,6 +58,13 @@ class Compilador:
             return 'Texto'
         elif expresion[0] == 'variable':
             variable = expresion[1]
+            if variable not in self.tabla_simbolos:
+                return 'Desconocido'
+            
+            # ⭐ VALIDAR SI LA VARIABLE TIENE VALOR ASIGNADO
+            if self.tabla_simbolos[variable]['valor'] is None:
+                return f'Error: La variable "{variable}" no tiene valor todavía, asígnale algo primero'
+            
             return self.tabla_simbolos.get(variable, {}).get('tipo', 'Desconocido')
         elif expresion[0] == 'capturar':
             tipo_captura = expresion[1]
@@ -65,11 +72,11 @@ class Compilador:
             tipo_parametro = self.obtener_tipo_expresion(parametro)
         
             if tipo_captura == 'Entero' and tipo_parametro != 'Entero':
-                return f'Error: Captura.Entero espera Entero, no {tipo_parametro}'
+                return f'Error: Captura.Entero espera Entero, pero le mandaste {tipo_parametro}'
             elif tipo_captura == 'Real' and tipo_parametro not in ['Entero', 'Real']:
-                return f'Error: Captura.Real espera número, no {tipo_parametro}'
+                return f'Error: Captura.Real espera un número, pero le mandaste {tipo_parametro}'
             elif tipo_captura == 'Texto' and tipo_parametro != 'Texto':
-                return f'Error: Captura.Texto espera texto, no {tipo_parametro}'
+                return f'Error: Captura.Texto espera texto, pero le mandaste {tipo_parametro}'
         
             return tipo_captura
 
@@ -90,12 +97,11 @@ class Compilador:
                     else:
                         return f'Error: No puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
                 else:
-                    # Ambos números → resultado es Real
                     return 'Real'
             else:
                 # Para -, *, / → solo números
                 if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
-                    return f'Error: Operación {op} solo entre números, no {tipo_izq} y {tipo_der}'
+                    return f'Error: La operación "{op}" solo funciona con números, no con {tipo_izq} y {tipo_der}'
                 return 'Real'
 
         return 'Desconocido'
@@ -218,10 +224,11 @@ class Compilador:
         if t:
             linea = t.lineno
             if t.type in ['IDENTIFICADOR', 'MENSAJE', 'CAPTURA']:
-                self.agregar_mensaje('error', linea, "¡Ey parce! Te faltó el punto y coma (;) en la línea anterior.")
+                self.agregar_mensaje('error', linea, "¡Ey cole! Te faltó el punto y coma (;) en la línea anterior.")
             else:
                 self.agregar_mensaje('error', linea, f"¡Qué vaina! Hay un error con '{t.value}' aquí mano")
             
+            # Mejor recuperación de errores
             while True:
                 tok = self.parser.token()
                 if not tok or tok.type == 'PUNTO_Y_COMA':
