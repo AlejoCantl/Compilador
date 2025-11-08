@@ -203,7 +203,7 @@ altura = 1,75;"""
         self.consola_text.insert(tk.END, f"{'='*50}\n", 'resumen')
         
         if errores == 0 and aciertos > 0:
-            self.consola_text.insert(tk.END, "¡Quedó chevere parce! Todo bien 🎉\n", 'exito')
+            self.consola_text.insert(tk.END, "¡Quedó chevere! Todo bien 🎉\n", 'exito')
         elif errores > 0:
             self.consola_text.insert(tk.END, f"¡Ombe! Hay {errores} error(es) que arreglar\n", 'error')
     

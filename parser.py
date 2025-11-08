@@ -172,7 +172,7 @@ class Compilador:
                 t[0] = None
             elif not self.tipos_compatibles(tipo_declarado, tipo_expresion):
                 self.agregar_mensaje('error', linea,
-                    f"¡Eso no cuadra parce! No puedes meter {tipo_expresion} en '{var}' que es {tipo_declarado}")
+                    f"¡Esa vaina que cole! No puedes meter {tipo_expresion} en '{var}' que es {tipo_declarado}")
                 t[0] = None
             else:
                 self.tabla_simbolos[var]['valor'] = expr

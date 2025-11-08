@@ -1,4 +1,3 @@
-# FILE: lexer.py (updated)
 import ply.lex as lex
 
 # ----------------------- TOKENS -----------------------------
@@ -67,7 +66,21 @@ def t_nueva_linea(t):
     t.lexer.lineno += len(t.value)
 
 def t_error(t):
-    print(f"⚠️ Carácter ilegal: '{t.value[0]}'")
+    # Detectar número pegado a letra (ej: 3ltura, 25abc)
+    if t.value[0].isdigit():
+        match = ''
+        for i, char in enumerate(t.value):
+            if char.isdigit() or char == ',':
+                match += char
+            elif char.isalpha() or char == '_':
+                # ¡Error! Número pegado a identificador
+                print(f"⚠️  [Línea {t.lexer.lineno}] ¡Ey cole! No puedes pegar números con letras así: '{t.value[:i+5]}'")
+                t.lexer.skip(len(match))
+                return None
+            else:
+                break
+    
+    print(f"⚠️  [Línea {t.lexer.lineno}] Carácter ilegal: '{t.value[0]}'")
     t.lexer.skip(1)
 
 # Construcción del analizador léxico
