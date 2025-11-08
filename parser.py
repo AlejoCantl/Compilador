@@ -114,19 +114,12 @@ class Compilador:
     
     def obtener_valor_expresion(self, expresion):
         """Obtiene el valor real de una expresión (para mostrar en mensajes)"""
-        if expresion[0] == 'operacion_binaria':
-            resultado = self.evaluar_operacion(expresion)
-            if resultado is not None:
-                # Mostrar como Entero si es decimal exacto, sino como Real
-                if isinstance(resultado, float) and resultado == int(resultado):
-                    return str(int(resultado))
-                return str(resultado)
-            return "[operación no evaluable]"
-        elif expresion[0] == 'cadena':
+        if expresion[0] == 'cadena':
             return expresion[1]
         elif expresion[0] == 'variable':
             variable = expresion[1]
             if variable in self.tabla_simbolos and self.tabla_simbolos[variable]['valor'] is not None:
+                # Recursivamente obtener el valor si es una variable
                 valor_almacenado = self.tabla_simbolos[variable]['valor']
                 return self.obtener_valor_expresion(valor_almacenado)
             return f"[{variable}]"
@@ -234,19 +227,12 @@ class Compilador:
         
         es_error = False
         error_mensaje = None
-        valor_mostrar = None
+        valor_mostrar = None  # Inicializar antes de validaciones
         
         # Check if it's an empty string
         if isinstance(valor_texto, str) and valor_texto == "":
             es_error = True
             error_mensaje = "¡Ombe! Mensaje.Texto está vacío, ponle algo pues."
-        elif isinstance(valor_texto, tuple) and valor_texto[0] == 'operacion_binaria':
-            tipo_expresion = self.obtener_tipo_expresion(valor_texto)
-            if 'Error:' in str(tipo_expresion):
-                es_error = True
-                error_mensaje = tipo_expresion
-            else:
-                valor_mostrar = self.obtener_valor_expresion(valor_texto)
         # Check if it's a variable
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'variable':
             var_nombre = valor_texto[1]
@@ -270,7 +256,7 @@ class Compilador:
         
         if es_error:
             self.agregar_mensaje('error', linea, error_mensaje)
-        elif valor_mostrar is not None:
+        else:
             self.agregar_mensaje('exito', linea, f"Mensaje.Texto: \"{valor_mostrar}\"")
         
         t[0] = ('mensaje_texto', t[5])
@@ -328,10 +314,8 @@ class Compilador:
                         self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea - 1}. ¡Todo está mal a partir de aquí!")
                         self.ultima_linea_error_semicolon = linea
             else:
-                # If it's in the same line, it's a syntax error
                 self.agregar_mensaje('error', linea, f"¡Qué vaina! Hay un error con '{t.value}' aquí mano")
             
-            # Better error recovery
             while True:
                 tok = self.parser.token()
                 if not tok or tok.type == 'PUNTO_Y_COMA':
@@ -340,36 +324,3 @@ class Compilador:
             return tok
         else:
             self.agregar_mensaje('error', '?', "¡Ombe! El archivo se acabó pero falta algo, revísalo completo.")
-    
-    def evaluar_operacion(self, expresion):
-        """Evalúa una operación binaria y retorna el resultado numérico"""
-        if expresion[0] == 'operacion_binaria':
-            op, izq, der = expresion[1], expresion[2], expresion[3]
-            
-            # Evaluar operandos recursivamente
-            val_izq = self.evaluar_operacion(izq)
-            val_der = self.evaluar_operacion(der)
-            
-            if val_izq is None or val_der is None:
-                return None
-            
-            try:
-                if op == '+':
-                    return val_izq + val_der
-                elif op == '-':
-                    return val_izq - val_der
-                elif op == '*':
-                    return val_izq * val_der
-                elif op == '/':
-                    if val_der == 0:
-                        return None
-                    return val_izq / val_der
-            except:
-                return None
-        elif expresion[0] == 'numero':
-            return expresion[1]
-        elif expresion[0] == 'variable':
-            var = expresion[1]
-            if var in self.tabla_simbolos and self.tabla_simbolos[var]['valor'] is not None:
-                return self.evaluar_operacion(self.tabla_simbolos[var]['valor'])
-        return None
