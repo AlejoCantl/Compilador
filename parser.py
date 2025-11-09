@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from lexer import tokens, analizador_lexico
+from lexer import tokens, analizador_lexico, errores_lexicos, limpiar_errores_lexicos
 
 class Compilador:
     def __init__(self):
@@ -8,7 +8,8 @@ class Compilador:
         self.parser = yacc.yacc(module=self, debug=False, write_tables=False)
         self.ultima_linea_completa = 0
         self.linea_actual = 0
-        self.ultima_linea_error_semicolon = -1  # track last semicolon error to avoid duplicates
+        self.ultima_linea_error_semicolon = -1
+    
     tokens = tokens
     
     def reset(self):
@@ -17,7 +18,7 @@ class Compilador:
         self.mensajes_consola.clear()
         self.ultima_linea_completa = 0
         self.linea_actual = 0
-        self.ultima_linea_error_semicolon = -1  # reset semicolon error tracker
+        self.ultima_linea_error_semicolon = -1
     
     def agregar_mensaje(self, tipo, linea, mensaje):
         """Agrega un mensaje a la consola"""
@@ -36,9 +37,19 @@ class Compilador:
     def analizar(self, codigo):
         """Analiza el código y retorna los resultados"""
         self.reset()
+        limpiar_errores_lexicos()  # ⭐ Limpiar errores léxicos anteriores
         analizador_lexico.lineno = 1
+        
         try:
             resultado = self.parser.parse(codigo, lexer=analizador_lexico, tracking=True)
+            
+            # ⭐ Agregar errores léxicos a los mensajes
+            for error in errores_lexicos:
+                self.mensajes_consola.append(error)
+            
+            # ⭐ Ordenar mensajes por línea
+            self.mensajes_consola.sort(key=lambda x: x['linea'] if isinstance(x['linea'], int) else 999999)
+            
             return {
                 'exito': True,
                 'resultado': resultado,
@@ -46,6 +57,12 @@ class Compilador:
                 'estadisticas': self.obtener_estadisticas()
             }
         except Exception as e:
+            # ⭐ Agregar errores léxicos incluso si hubo excepción
+            for error in errores_lexicos:
+                self.mensajes_consola.append(error)
+            
+            self.mensajes_consola.sort(key=lambda x: x['linea'] if isinstance(x['linea'], int) else 999999)
+            
             self.agregar_mensaje('error', '?', f"¡Qué desastre! Algo se dañó en el análisis: {str(e)}")
             return {
                 'exito': False,
@@ -57,6 +74,10 @@ class Compilador:
     # ============ VALIDACIÓN DE TIPOS ============
     def obtener_tipo_expresion(self, expresion):
         """Determina el tipo de una expresión con validación estricta"""
+        # ⭐ FIX: Detectar expresiones de error
+        if expresion[0] == 'error':
+            return 'Error'
+        
         if expresion[0] == 'numero':
             valor = expresion[1]
             return 'Entero' if isinstance(valor, int) else 'Real'
@@ -85,16 +106,15 @@ class Compilador:
                 return f'Error: Captura.Texto espera texto, pero le mandaste {tipo_parametro}'
         
             return tipo_captura
-
         elif expresion[0] == 'operacion_binaria':
             op, izq, der = expresion[1], expresion[2], expresion[3]
             tipo_izq = self.obtener_tipo_expresion(izq)
             tipo_der = self.obtener_tipo_expresion(der)
-
+            
             # Si ya hay error en subexpresiones
             if 'Error:' in str(tipo_izq) or 'Error:' in str(tipo_der):
                 return tipo_izq if 'Error:' in str(tipo_izq) else tipo_der
-
+            
             # Validar suma con texto (solo permitida entre Texto + Texto)
             if op == '+':
                 if tipo_izq == 'Texto' or tipo_der == 'Texto':
@@ -109,11 +129,15 @@ class Compilador:
                 if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
                     return f'Error: La operación "{op}" solo funciona con números, no con {tipo_izq} y {tipo_der}'
                 return 'Real'
-
+        
         return 'Desconocido'
     
     def obtener_valor_expresion(self, expresion):
         """Obtiene el valor real de una expresión (para mostrar en mensajes)"""
+        # ⭐ FIX: No intentar obtener valor de expresiones de error
+        if expresion[0] == 'error':
+            return None
+        
         if expresion[0] == 'operacion_binaria':
             resultado = self.evaluar_operacion(expresion)
             if resultado is not None:
@@ -191,7 +215,6 @@ class Compilador:
         linea = t.lineno(1)
         self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
         t[0] = None
-        # NO se agrega a tabla_simbolos
     
     def p_sentencia_asignacion(self, t):
         'sentencia : IDENTIFICADOR IGUAL expresion PUNTO_Y_COMA'
@@ -224,7 +247,6 @@ class Compilador:
         linea = t.lineno(1)
         self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
         t[0] = None
-        # NO se asigna el valor
     
     def p_sentencia_mensaje(self, t):
         '''sentencia : MENSAJE PUNTO TEXTO PARENTESIS_IZQ CADENA_TEXTO PARENTESIS_DER PUNTO_Y_COMA
@@ -235,6 +257,14 @@ class Compilador:
         es_error = False
         error_mensaje = None
         valor_mostrar = None
+        
+        # ⭐ FIX: Detectar expresiones de error primero
+        if isinstance(valor_texto, tuple) and valor_texto[0] == 'error':
+            var_nombre = valor_texto[1]
+            self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var_nombre}' no existe, no puedo mostrar un fantasma.")
+            t[0] = None
+            self.ultima_linea_completa = linea
+            return
         
         # Check if it's an empty string
         if isinstance(valor_texto, str) and valor_texto == "":
@@ -257,7 +287,7 @@ class Compilador:
             # Check if variable has a value assigned
             elif self.tabla_simbolos[var_nombre]['valor'] is None:
                 es_error = True
-                error_mensaje = f"¡Ombe! La variable '{var_nombre}' no tiene valor, asígnale algo primero."
+                error_mensaje = f"¡Eche! La variable '{var_nombre}' no tiene valor, asígnale algo primero."
             else:
                 valor_mostrar = self.obtener_valor_expresion(valor_texto)
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'cadena':
@@ -271,7 +301,7 @@ class Compilador:
         if es_error:
             self.agregar_mensaje('error', linea, error_mensaje)
         elif valor_mostrar is not None:
-            self.agregar_mensaje('exito', linea, f"Mensaje.Texto: \"{valor_mostrar}\"")
+            self.agregar_mensaje('exito', linea, f"Nojoda monstruo está bueno el valor es \"{valor_mostrar}\"")
         
         t[0] = ('mensaje_texto', t[5])
         self.ultima_linea_completa = linea
@@ -297,7 +327,8 @@ class Compilador:
         var = t[1]
         linea = t.lineno(1)
         if var not in self.tabla_simbolos:
-            self.agregar_mensaje('advertencia', linea, f"¡Ajá! La variable '{var}' no existe todavía.")
+            # ⭐ NO agregar mensaje aquí, solo marcar como error
+            # El mensaje se mostrará donde se use la variable
             t[0] = ('error', var)
         else:
             t[0] = ('variable', var)

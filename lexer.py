@@ -1,5 +1,20 @@
 import ply.lex as lex
 
+# Variable global para almacenar errores léxicos
+errores_lexicos = []
+
+def agregar_error_lexico(linea, mensaje):
+    """Agrega un error léxico a la lista global"""
+    errores_lexicos.append({
+        'tipo': 'error',
+        'linea': linea,
+        'mensaje': mensaje
+    })
+
+def limpiar_errores_lexicos():
+    """Limpia la lista de errores léxicos"""
+    errores_lexicos.clear()
+
 # ----------------------- TOKENS -----------------------------
 tokens = (
     'IGUAL', 'MAS', 'MENOS', 'POR', 'DIVIDIDO',
@@ -30,9 +45,18 @@ t_PARENTESIS_DER = r'\)'
 t_PUNTO_Y_COMA = r';'
 t_COMA = r','
 t_PUNTO = r'\.'
+
 t_ignore = ' \t'
 
 # -------------------REGLAS DE TOKENS-------------------------
+
+# ⭐ ORDEN IMPORTANTE: Esta regla debe estar ANTES de t_IDENTIFICADOR
+def t_NUMERO_PEGADO_A_LETRA(t):
+    r'\d+[a-zA-Z_][a-zA-Z0-9_]*'
+    agregar_error_lexico(t.lexer.lineno, f"¡Ey cole! Las variables no pueden empezar con números: '{t.value}'")
+    # NO retornamos el token, lo ignoramos completamente
+    pass
+
 def t_IDENTIFICADOR(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
     t.type = reservadas.get(t.value, 'IDENTIFICADOR')
@@ -66,21 +90,7 @@ def t_nueva_linea(t):
     t.lexer.lineno += len(t.value)
 
 def t_error(t):
-    # Detectar número pegado a letra (ej: 3ltura, 25abc)
-    if t.value[0].isdigit():
-        match = ''
-        for i, char in enumerate(t.value):
-            if char.isdigit() or char == ',':
-                match += char
-            elif char.isalpha() or char == '_':
-                # ¡Error! Número pegado a identificador
-                print(f"⚠️  [Línea {t.lexer.lineno}] ¡Ey cole! No puedes pegar números con letras así: '{t.value[:i+5]}'")
-                t.lexer.skip(len(match))
-                return None
-            else:
-                break
-    
-    print(f"⚠️  [Línea {t.lexer.lineno}] Carácter ilegal: '{t.value[0]}'")
+    agregar_error_lexico(t.lexer.lineno, f"Carácter ilegal: '{t.value[0]}'")
     t.lexer.skip(1)
 
 # Construcción del analizador léxico
