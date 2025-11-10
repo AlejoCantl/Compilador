@@ -90,7 +90,7 @@ class Compilador:
             
             # ⭐ VALIDAR SI LA VARIABLE TIENE VALOR ASIGNADO
             if self.tabla_simbolos[variable]['valor'] is None:
-                return f'Error: La variable "{variable}" no tiene valor todavía, asígnale algo primero'
+                return f'!Eche que! La variable "{variable}" no tiene valor todavía, asígnale algo primero'
             
             return self.tabla_simbolos.get(variable, {}).get('tipo', 'Desconocido')
         elif expresion[0] == 'capturar':
@@ -99,11 +99,11 @@ class Compilador:
             tipo_parametro = self.obtener_tipo_expresion(parametro)
         
             if tipo_captura == 'Entero' and tipo_parametro != 'Entero':
-                return f'Error: Captura.Entero espera Entero, pero le mandaste {tipo_parametro}'
+                return f'¡Nojoda tu que! Captura.Entero espera Entero, pero le mandaste {tipo_parametro}'
             elif tipo_captura == 'Real' and tipo_parametro not in ['Entero', 'Real']:
-                return f'Error: Captura.Real espera un número, pero le mandaste {tipo_parametro}'
+                return f'¡Nojoda tu que! Captura.Real espera un número, pero le mandaste {tipo_parametro}'
             elif tipo_captura == 'Texto' and tipo_parametro != 'Texto':
-                return f'Error: Captura.Texto espera texto, pero le mandaste {tipo_parametro}'
+                return f'¡Nojoda tu que! Captura.Texto espera texto, pero le mandaste {tipo_parametro}'
         
             return tipo_captura
         elif expresion[0] == 'operacion_binaria':
@@ -121,7 +121,7 @@ class Compilador:
                     if tipo_izq == 'Texto' and tipo_der == 'Texto':
                         return 'Texto'
                     else:
-                        return f'Error: No puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
+                        return f'¡Nojoda que! no puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
                 else:
                     return 'Real'
             else:
@@ -156,6 +156,12 @@ class Compilador:
             return f"[{variable}]"
         elif expresion[0] == 'numero':
             return str(expresion[1])
+        elif expresion[0] == 'capturar':
+            # ⭐ FIX: Manejar Captura correctamente
+            #tipo_captura = expresion[1]
+            parametro = expresion[2]
+            valor_parametro = self.obtener_valor_expresion(parametro)
+            return valor_parametro
         else:
             return str(expresion)
     
@@ -287,14 +293,14 @@ class Compilador:
             # Check if variable has a value assigned
             elif self.tabla_simbolos[var_nombre]['valor'] is None:
                 es_error = True
-                error_mensaje = f"¡Eche! La variable '{var_nombre}' no tiene valor, asígnale algo primero."
+                error_mensaje = f"¡Ombe! La variable '{var_nombre}' no tiene valor, asígnale algo primero."
             else:
                 valor_mostrar = self.obtener_valor_expresion(valor_texto)
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'cadena':
             valor_mostrar = valor_texto[1]
             if valor_mostrar == "":
                 es_error = True
-                error_mensaje = "¡Ombe! Mensaje.Texto está vacío, ponle algo pues."
+                error_mensaje = "¡Ombe! vale mía Mensaje.Texto está vacío, ponle algo pues."
         else:
             valor_mostrar = str(valor_texto)
         
@@ -403,4 +409,9 @@ class Compilador:
             var = expresion[1]
             if var in self.tabla_simbolos and self.tabla_simbolos[var]['valor'] is not None:
                 return self.evaluar_operacion(self.tabla_simbolos[var]['valor'])
+        elif expresion[0] == 'capturar':
+            # ⭐ FIX: Evaluar Captura - obtener el valor del parámetro
+            parametro = expresion[2]
+            return self.evaluar_operacion(parametro)
+        
         return None
