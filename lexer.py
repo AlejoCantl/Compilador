@@ -53,7 +53,7 @@ t_ignore = ' \t'
 # ⭐ ORDEN IMPORTANTE: Esta regla debe estar ANTES de t_IDENTIFICADOR
 def t_NUMERO_PEGADO_A_LETRA(t):
     r'\d+[a-zA-Z_][a-zA-Z0-9_]*'
-    agregar_error_lexico(t.lexer.lineno, f"¡Ey cole! Las variables no pueden empezar con números: '{t.value}'")
+    agregar_error_lexico(t.lexer.lineno, f"¡Eche tu que! Las variables no pueden empezar con números: '{t.value}'")
     # NO retornamos el token, lo ignoramos completamente
     pass
 
@@ -62,8 +62,10 @@ def t_IDENTIFICADOR(t):
     t.type = reservadas.get(t.value, 'IDENTIFICADOR')
     return t
 
+# ⭐ NUEVO: Acepta tanto coma como punto para números reales
 def t_NUMERO_REAL(t):
-    r'\d+,\d+'
+    r'\d+[,\.]\d+'
+    # Normalizar: convertir coma a punto para Python
     t.value = float(t.value.replace(',', '.'))
     return t
 

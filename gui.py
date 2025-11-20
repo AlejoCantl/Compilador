@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import scrolledtext
+import re
 
 class CompiladorGUI:
     def __init__(self, root, compilador):
@@ -113,13 +114,14 @@ class CompiladorGUI:
         
         scrollbar_x.config(command=ejemplo_text.xview)
         
+        # ⭐ ACTUALIZADO: Ejemplos con punto Y coma
         ejemplos = """// Declaración y asignación
 nombre Texto;
 nombre = "Carlos";
 edad Entero;
 edad = 25;
 altura Real;
-altura = 1,75;"""
+altura = 1,75;  // ó 1.75 (ambos funcionan)"""
         
         ejemplo_text.insert('1.0', ejemplos)
         ejemplo_text.config(state=tk.DISABLED)
@@ -155,7 +157,7 @@ altura = 1,75;"""
         self.consola_text.tag_config('advertencia', foreground='#fbbf24', font=('Consolas', 10, 'bold'))
         self.consola_text.tag_config('linea', foreground='#60a5fa', font=('Consolas', 9))
         self.consola_text.tag_config('resumen', foreground='#c084fc', font=('Consolas', 11, 'bold'))
-
+    
     def analizar_codigo(self):
         """Ejecuta el análisis del código"""
         codigo = self.codigo_text.get('1.0', tk.END)
@@ -163,6 +165,18 @@ altura = 1,75;"""
         # Limpiar consola
         self.consola_text.config(state=tk.NORMAL)
         self.consola_text.delete('1.0', tk.END)
+        
+        # ⭐ VALIDACIÓN PREVIA: Verificar si hay código (sin contar comentarios)
+        codigo_sin_comentarios = re.sub(r'//.*', '', codigo)
+        codigo_sin_comentarios = re.sub(r'/\*[\s\S]*?\*/', '', codigo_sin_comentarios)
+        codigo_limpio = codigo_sin_comentarios.strip()
+        
+        if not codigo_limpio:
+            self.consola_text.insert(tk.END, "❌ ", 'error')
+            self.consola_text.insert(tk.END, "¡Ombe! No hay nada que analizar, escribe algo pues.\n", 'error')
+            self.actualizar_estadisticas(0, 0)
+            self.consola_text.config(state=tk.DISABLED)
+            return
         
         # Analizar con el compilador
         resultado = self.compilador.analizar(codigo)
