@@ -173,7 +173,7 @@ altura = 1,75;  // ó 1.75 (ambos funcionan)"""
         
         if not codigo_limpio:
             self.consola_text.insert(tk.END, "⚠️ ", 'advertencia')
-            self.consola_text.insert(tk.END, "¡Ombe! No hay nada que analizar, escribe algo pues.\n", 'advertencia')
+            self.consola_text.insert(tk.END, "¡Ombe! No hay nada que analizar, escribe algo apue.\n", 'advertencia')
             self.actualizar_estadisticas(0, 0)
             self.consola_text.config(state=tk.DISABLED)
             return

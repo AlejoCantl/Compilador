@@ -9,6 +9,7 @@ class Compilador:
         self.ultima_linea_completa = 0
         self.linea_actual = 0
         self.ultima_linea_error_semicolon = -1
+        self.errores_reportados = set()  # Para evitar errores duplicados
     
     tokens = tokens
     
@@ -19,14 +20,19 @@ class Compilador:
         self.ultima_linea_completa = 0
         self.linea_actual = 0
         self.ultima_linea_error_semicolon = -1
+        self.errores_reportados.clear()
     
     def agregar_mensaje(self, tipo, linea, mensaje):
-        """Agrega un mensaje a la consola"""
-        self.mensajes_consola.append({
-            'tipo': tipo,
-            'linea': linea,
-            'mensaje': mensaje
-        })
+        """Agrega un mensaje a la consola evitando duplicados"""
+        clave_error = (tipo, linea, mensaje)
+        if clave_error not in self.errores_reportados:
+            self.mensajes_consola.append({
+                'tipo': tipo,
+                'linea': linea,
+                'mensaje': mensaje
+            })
+            if tipo == 'error':
+                self.errores_reportados.add(clave_error)
     
     def obtener_estadisticas(self):
         """Retorna estadísticas de compilación"""
@@ -60,7 +66,6 @@ class Compilador:
             
             self.mensajes_consola.sort(key=lambda x: x['linea'] if isinstance(x['linea'], int) else 999999)
             
-            self.agregar_mensaje('error', '?', f"¡Qué desastre! Algo se dañó en el análisis: {str(e)}")
             return {
                 'exito': False,
                 'resultado': None,
@@ -89,7 +94,6 @@ class Compilador:
             
             return self.tabla_simbolos.get(variable, {}).get('tipo', 'Desconocido')
         elif expresion[0] == 'capturar':
-            # ⭐ NUEVO: Captura retorna el tipo que se especificó (Entero, Real, Texto)
             tipo_captura = expresion[1]
             return tipo_captura
         elif expresion[0] == 'operacion_binaria':
@@ -107,7 +111,6 @@ class Compilador:
                     else:
                         return f'¡Nojoda que! no puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
                 else:
-                    # ✅ Inferir tipo según operandos
                     if tipo_izq == 'Entero' and tipo_der == 'Entero':
                         return 'Entero'
                     else:
@@ -116,7 +119,6 @@ class Compilador:
                 if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
                     return f'Error: La operación "{op}" solo funciona con números, no con {tipo_izq} y {tipo_der}'
                 
-                # ✅ Inferir tipo según operandos
                 if tipo_izq == 'Entero' and tipo_der == 'Entero':
                     return 'Entero'
                 else:
@@ -145,7 +147,6 @@ class Compilador:
         elif expresion[0] == 'variable':
             variable = expresion[1]
             
-            # ✅ PROTECCIÓN: Detectar referencia circular
             if variable in visitados:
                 return f"[{variable}]"
             
@@ -218,7 +219,7 @@ class Compilador:
         'sentencia : IDENTIFICADOR tipo'
         var, tipo_var = t[1], t[2]
         linea = t.lineno(1)
-        self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
+        self.agregar_mensaje('error', linea, f"¡Ey mi llave! Te faltó el punto y coma (;) después de '{var} {tipo_var}'")
         t[0] = None
     
     def p_sentencia_asignacion(self, t):
@@ -227,17 +228,15 @@ class Compilador:
         linea = t.lineno(1)
         
         if var not in self.tabla_simbolos:
-            self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var}' no existe, declárala primero apue.")
+            self.agregar_mensaje('error', linea, f"¡Ombe hey! La variable '{var}' no existe, declárala primero apue.")
             t[0] = None
         else:
             tipo_declarado = self.tabla_simbolos[var]['tipo']
             tipo_expresion = self.obtener_tipo_expresion(expr)
             
-            # ⭐ NUEVO: Validación específica para Captura
             if isinstance(expr, tuple) and expr[0] == 'capturar':
                 tipo_captura = expr[1]
                 
-                # Validar que el tipo de Captura coincida con el tipo de variable
                 if tipo_declarado != tipo_captura:
                     self.agregar_mensaje('error', linea,
                         f"¡Ey vale! No puedes usar Captura.{tipo_captura}() para '{var}' que es {tipo_declarado}")
@@ -263,7 +262,7 @@ class Compilador:
         'sentencia : IDENTIFICADOR IGUAL expresion'
         var, expr = t[1], t[3]
         linea = t.lineno(1)
-        self.agregar_mensaje('error', linea, f"¡Uy pah! pero Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
+        self.agregar_mensaje('error', linea, f"¡Ey mi llave! Te faltó el punto y coma (;) después de '{var} = ...'")
         t[0] = None
     
     def p_sentencia_mensaje(self, t):
@@ -283,7 +282,6 @@ class Compilador:
             self.ultima_linea_completa = linea
             return
         
-        # ⭐ NUEVO: Detectar Captura en Mensaje.Texto
         if isinstance(valor_texto, tuple) and valor_texto[0] == 'capturar':
             es_error = True
             tipo_captura = valor_texto[1]
@@ -353,12 +351,10 @@ class Compilador:
         'expresion : CADENA_TEXTO'
         t[0] = ('cadena', t[1])
     
-    # ⭐ NUEVO: Captura puede tener paréntesis vacíos
     def p_expresion_captura_vacia(self, t):
         'expresion : CAPTURA PUNTO tipo PARENTESIS_IZQ PARENTESIS_DER'
         t[0] = ('capturar', t[3])
     
-    # ⭐ NUEVO: Captura también puede tener parámetro (aunque no se valida el contenido)
     def p_expresion_captura_con_parametro(self, t):
         'expresion : CAPTURA PUNTO tipo PARENTESIS_IZQ expresion PARENTESIS_DER'
         t[0] = ('capturar', t[3])
@@ -366,21 +362,31 @@ class Compilador:
     def p_error(self, t):
         if t:
             linea = t.lineno
+            valor = t.value
             
-            if linea > self.ultima_linea_completa + 1:
-                if linea != self.ultima_linea_error_semicolon:
-                    linea_anterior_tiene_codigo = False
-                    for msg in self.mensajes_consola:
-                        if msg['linea'] == linea - 1 and msg['tipo'] in ['exito', 'error']:
-                            linea_anterior_tiene_codigo = True
-                            break
-                    
-                    if linea_anterior_tiene_codigo:
-                        self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea - 1}. ¡Todo está mal a partir de aquí!")
-                        self.ultima_linea_error_semicolon = linea
+            # Detectar errores específicos
+            if t.type == 'IDENTIFICADOR':
+                # Si es un identificador en minúsculas donde debería ser palabra reservada
+                if valor.lower() in ['texto', 'entero', 'real']:
+                    self.agregar_mensaje('error', linea, 
+                        f"¡Ombe! '{valor}' debe escribirse con mayúscula inicial: '{valor.capitalize()}'")
+                else:
+                    self.agregar_mensaje('error', linea, 
+                        f"¡Qué vaina! Error de sintaxis con '{valor}' en esta línea")
+            elif t.type == 'PUNTO_Y_COMA':
+                self.agregar_mensaje('error', linea, 
+                    f"¡Qué vaina! El punto y coma (;) está en un lugar incorrecto")
+            elif t.type in ['PARENTESIS_DER', 'PARENTESIS_IZQ']:
+                self.agregar_mensaje('error', linea, 
+                    f"¡Ombe! Falta un paréntesis o está en el lugar equivocado")
+            elif t.type in ['MAS', 'MENOS', 'POR', 'DIVIDIDO']:
+                self.agregar_mensaje('error', linea, 
+                    f"¡Qué vaina! El operador '{valor}' no está bien colocado")
             else:
-                self.agregar_mensaje('error', linea, f"¡Qué vaina! Hay un error con '{t.value}' aquí mano")
+                self.agregar_mensaje('error', linea, 
+                    f"¡Qué vaina! Error de sintaxis con '{valor}' aquí")
             
+            # Intentar recuperarse
             while True:
                 tok = self.parser.token()
                 if not tok or tok.type == 'PUNTO_Y_COMA':
@@ -388,7 +394,10 @@ class Compilador:
             self.parser.errok()
             return tok
         else:
-            self.agregar_mensaje('error', '?', "¡Ombe! El archivo se acabó pero falta algo, revísalo completo.")
+            # Solo reportar si hay errores previos sin resolver
+            if not self.mensajes_consola or all(m['tipo'] != 'error' for m in self.mensajes_consola):
+                self.agregar_mensaje('error', '?', 
+                    "¡Ombe! El archivo terminó de forma inesperada, puede que falte algo")
     
     def evaluar_operacion(self, expresion, visitados=None):
         """Evalúa una operación binaria y retorna el resultado numérico"""
@@ -424,7 +433,6 @@ class Compilador:
         elif expresion[0] == 'variable':
             var = expresion[1]
             
-            # ✅ PROTECCIÓN: Detectar referencia circular
             if var in visitados:
                 return None
             
