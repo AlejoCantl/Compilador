@@ -6,7 +6,7 @@ class CompiladorGUI:
     def __init__(self, root, compilador):
         self.root = root
         self.compilador = compilador
-        self.root.title("🌴 Compilador Costeñol")
+        self.root.title("Compilador Costeñol")
         self.root.geometry("1300x750")
         self.root.configure(bg='#f0f4f8')
         
@@ -30,7 +30,7 @@ class CompiladorGUI:
         header_frame = tk.Frame(parent, bg='white', relief=tk.RAISED, bd=2)
         header_frame.pack(fill=tk.X, pady=(0, 10))
         
-        title_label = tk.Label(header_frame, text="🌴 Compilador Costeñol", 
+        title_label = tk.Label(header_frame, text="Compilador Costeñol", 
                                font=('Arial', 24, 'bold'), bg='white', fg='#2c3e50')
         title_label.pack(side=tk.LEFT, padx=20, pady=15)
         
@@ -63,7 +63,7 @@ class CompiladorGUI:
         tk.Label(editor_header, text="📝 Editor de Código", font=('Arial', 14, 'bold'),
                 bg='#3498db', fg='white').pack(side=tk.LEFT, padx=15, pady=10)
         
-        self.analizar_btn = tk.Button(editor_header, text="▶ Analizar", 
+        self.analizar_btn = tk.Button(editor_header, text="▶ Compilar", 
                                       font=('Arial', 12, 'bold'),
                                       bg='#2ecc71', fg='white', 
                                       activebackground='#27ae60',

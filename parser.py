@@ -85,7 +85,7 @@ class Compilador:
                 return 'Desconocido'
             
             if self.tabla_simbolos[variable]['valor'] is None:
-                return f'!Eche que! La variable "{variable}" no tiene valor todavía, asígnale algo primero'
+                return f'!Eche tú que! La variable "{variable}" no tiene valor todavía, ponle algo primero eche nojoda care mondá'
             
             return self.tabla_simbolos.get(variable, {}).get('tipo', 'Desconocido')
         elif expresion[0] == 'capturar':
@@ -107,38 +107,58 @@ class Compilador:
                     else:
                         return f'¡Nojoda que! no puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
                 else:
-                    return 'Real'
+                    # ✅ Inferir tipo según operandos
+                    if tipo_izq == 'Entero' and tipo_der == 'Entero':
+                        return 'Entero'
+                    else:
+                        return 'Real'
             else:
                 if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
                     return f'Error: La operación "{op}" solo funciona con números, no con {tipo_izq} y {tipo_der}'
-                return 'Real'
-        
+                
+                # ✅ Inferir tipo según operandos
+                if tipo_izq == 'Entero' and tipo_der == 'Entero':
+                    return 'Entero'
+                else:
+                    return 'Real'        
         return 'Desconocido'
     
-    def obtener_valor_expresion(self, expresion):
+    def obtener_valor_expresion(self, expresion, visitados=None):
         """Obtiene el valor real de una expresión (para mostrar en mensajes)"""
+        if visitados is None:
+            visitados = set()
+        
         if expresion[0] == 'error':
             return None
         
         if expresion[0] == 'operacion_binaria':
-            resultado = self.evaluar_operacion(expresion)
+            resultado = self.evaluar_operacion(expresion, visitados)
             if resultado is not None:
                 if isinstance(resultado, float) and resultado == int(resultado):
                     return str(int(resultado))
                 return str(resultado)
             return "[operación no evaluable]"
+        
         elif expresion[0] == 'cadena':
             return expresion[1]
+        
         elif expresion[0] == 'variable':
             variable = expresion[1]
+            
+            # ✅ PROTECCIÓN: Detectar referencia circular
+            if variable in visitados:
+                return f"[{variable}]"
+            
             if variable in self.tabla_simbolos and self.tabla_simbolos[variable]['valor'] is not None:
                 valor_almacenado = self.tabla_simbolos[variable]['valor']
-                return self.obtener_valor_expresion(valor_almacenado)
+                visitados.add(variable)
+                return self.obtener_valor_expresion(valor_almacenado, visitados)
             return f"[{variable}]"
+        
         elif expresion[0] == 'numero':
             return str(expresion[1])
+        
         elif expresion[0] == 'capturar':
-            # ⭐ NUEVO: Mostrar que es una captura
             tipo_captura = expresion[1]
             return f"[Captura.{tipo_captura}()]"
         else:
@@ -207,7 +227,7 @@ class Compilador:
         linea = t.lineno(1)
         
         if var not in self.tabla_simbolos:
-            self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var}' no existe, declárala primero pues.")
+            self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var}' no existe, declárala primero apue.")
             t[0] = None
         else:
             tipo_declarado = self.tabla_simbolos[var]['tipo']
@@ -243,7 +263,7 @@ class Compilador:
         'sentencia : IDENTIFICADOR IGUAL expresion'
         var, expr = t[1], t[3]
         linea = t.lineno(1)
-        self.agregar_mensaje('error', linea, f"¡Ey cole! Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
+        self.agregar_mensaje('error', linea, f"¡Uy pah! pero Te faltó el punto y coma (;) en la línea {linea}. ¡Todo está mal a partir de aquí!")
         t[0] = None
     
     def p_sentencia_mensaje(self, t):
@@ -270,7 +290,7 @@ class Compilador:
             error_mensaje = f"¡Ombe! No puedes usar Captura.{tipo_captura}() dentro de Mensaje.Texto()"
         elif isinstance(valor_texto, str) and valor_texto == "":
             es_error = True
-            error_mensaje = "¡Ombe! Mensaje.Texto está vacío, ponle algo pues."
+            error_mensaje = "¡Joa! Mensaje.Texto está vacío, ponle algo pues."
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'operacion_binaria':
             tipo_expresion = self.obtener_tipo_expresion(valor_texto)
             if 'Error:' in str(tipo_expresion):
@@ -299,7 +319,7 @@ class Compilador:
         if es_error:
             self.agregar_mensaje('error', linea, error_mensaje)
         elif valor_mostrar is not None:
-            self.agregar_mensaje('exito', linea, f"Nojoda monstruo está bueno el valor es \"{valor_mostrar}\"")
+            self.agregar_mensaje('exito', linea, f"Nojoda mostro está bueno el valor es \"{valor_mostrar}\"")
         
         t[0] = ('mensaje_texto', t[5])
         self.ultima_linea_completa = linea
@@ -370,13 +390,16 @@ class Compilador:
         else:
             self.agregar_mensaje('error', '?', "¡Ombe! El archivo se acabó pero falta algo, revísalo completo.")
     
-    def evaluar_operacion(self, expresion):
+    def evaluar_operacion(self, expresion, visitados=None):
         """Evalúa una operación binaria y retorna el resultado numérico"""
+        if visitados is None:
+            visitados = set()
+        
         if expresion[0] == 'operacion_binaria':
             op, izq, der = expresion[1], expresion[2], expresion[3]
             
-            val_izq = self.evaluar_operacion(izq)
-            val_der = self.evaluar_operacion(der)
+            val_izq = self.evaluar_operacion(izq, visitados)
+            val_der = self.evaluar_operacion(der, visitados)
             
             if val_izq is None or val_der is None:
                 return None
@@ -394,14 +417,23 @@ class Compilador:
                     return val_izq / val_der
             except:
                 return None
+        
         elif expresion[0] == 'numero':
             return expresion[1]
+        
         elif expresion[0] == 'variable':
             var = expresion[1]
+            
+            # ✅ PROTECCIÓN: Detectar referencia circular
+            if var in visitados:
+                return None
+            
             if var in self.tabla_simbolos and self.tabla_simbolos[var]['valor'] is not None:
-                return self.evaluar_operacion(self.tabla_simbolos[var]['valor'])
+                visitados.add(var)
+                return self.evaluar_operacion(self.tabla_simbolos[var]['valor'], visitados)
+            return None
+        
         elif expresion[0] == 'capturar':
-            # Las capturas no se pueden evaluar en tiempo de análisis
             return None
         
         return None
