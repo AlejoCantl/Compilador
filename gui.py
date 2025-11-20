@@ -172,8 +172,8 @@ altura = 1,75;  // ó 1.75 (ambos funcionan)"""
         codigo_limpio = codigo_sin_comentarios.strip()
         
         if not codigo_limpio:
-            self.consola_text.insert(tk.END, "❌ ", 'error')
-            self.consola_text.insert(tk.END, "¡Ombe! No hay nada que analizar, escribe algo pues.\n", 'error')
+            self.consola_text.insert(tk.END, "⚠️ ", 'advertencia')
+            self.consola_text.insert(tk.END, "¡Ombe! No hay nada que analizar, escribe algo pues.\n", 'advertencia')
             self.actualizar_estadisticas(0, 0)
             self.consola_text.config(state=tk.DISABLED)
             return
