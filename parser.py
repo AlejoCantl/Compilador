@@ -265,9 +265,14 @@ class Compilador:
             self.agregar_mensaje('error', linea, f"¡Epa! La variable '{var}' ya la declaraste mano, no la repitas.")
             t[0] = None
         else:
-            self.tabla_simbolos[var] = {'tipo': tipo_var, 'valor': None, 'linea': linea}
-            self.agregar_mensaje('exito', linea, f"¡Bien ahí! Variable '{var}' quedó como {tipo_var}")
-            t[0] = ('declarar', var, tipo_var)
+            # ✅ Check if variable starts with a number (lexer error)
+            if var[0].isdigit():
+                # Error already reported by lexer, do not add success message
+                t[0] = None
+            else:
+                self.tabla_simbolos[var] = {'tipo': tipo_var, 'valor': None, 'linea': linea}
+                self.agregar_mensaje('exito', linea, f"¡Bien ahí! Variable '{var}' quedó como {tipo_var}")
+                t[0] = ('declarar', var, tipo_var)
         self.ultima_linea_completa = linea
     
     def p_sentencia_declaracion_sin_punto_y_coma(self, t):
@@ -294,7 +299,15 @@ class Compilador:
             
             # ✅ Si la expresión es un error (como Captura con tipo mal escrito), no asignar
             if isinstance(expr, tuple) and expr[0] == 'error':
-                # El error ya fue reportado, solo no hacer la asignación
+                # Verificar si es error de variable no definida y sugerir comillas para Texto
+                if expr[1] == 'variable_no_definida':
+                    var_error = expr[2]
+                    if tipo_declarado == 'Texto':
+                        self.agregar_mensaje('error', linea, 
+                            f"¡Eche! Si '{var_error}' es texto, ponle comillas ombe: \"{var_error}\"")
+                    else:
+                        self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var_error}' no existe, no inventes.")
+                # Otros errores ya fueron reportados
                 t[0] = None
                 return
             
@@ -343,8 +356,11 @@ class Compilador:
         valor_mostrar = None
         
         if isinstance(valor_texto, tuple) and valor_texto[0] == 'error':
-            var_nombre = valor_texto[1]
-            self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var_nombre}' no existe, no puedo mostrar un fantasma.")
+            if len(valor_texto) > 1:
+                 var_nombre = valor_texto[1]
+                 if var_nombre == 'variable_no_definida':
+                     var_nombre = valor_texto[2]
+                 self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var_nombre}' no existe, no puedo mostrar un fantasma.")
             t[0] = None
             self.ultima_linea_completa = linea
             return
@@ -354,8 +370,8 @@ class Compilador:
             tipo_captura = valor_texto[1]
             error_mensaje = f"¡Ombe! No puedes usar Captura.{tipo_captura}() dentro de Mensaje.Texto()"
         elif isinstance(valor_texto, str) and valor_texto == "":
-            es_error = True
-            error_mensaje = "¡Joa! Mensaje.Texto está vacío, ponle algo pues."
+            # Permitir cadenas vacías
+            valor_mostrar = ""
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'operacion_binaria':
             tipo_expresion = self.obtener_tipo_expresion(valor_texto)
             if 'Error:' in str(tipo_expresion):
@@ -375,9 +391,7 @@ class Compilador:
                 valor_mostrar = self.obtener_valor_expresion(valor_texto)
         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'cadena':
             valor_mostrar = valor_texto[1]
-            if valor_mostrar == "":
-                es_error = True
-                error_mensaje = "¡Ombe! vale mía Mensaje.Texto está vacío, ponle algo pues."
+            # Permitir cadenas vacías
         else:
             valor_mostrar = str(valor_texto)
         
@@ -388,6 +402,26 @@ class Compilador:
         
         t[0] = ('mensaje_texto', t[5])
         self.ultima_linea_completa = linea
+
+    # ✅ ERROR: Mensaje.Texto vacío
+    def p_sentencia_mensaje_vacio(self, t):
+        'sentencia : MENSAJE PUNTO TEXTO PARENTESIS_IZQ PARENTESIS_DER PUNTO_Y_COMA'
+        linea = t.lineno(1)
+        self.agregar_mensaje('error', linea, "¡Joa! Mensaje.Texto está vacío, ponle algo pues.")
+        t[0] = None
+
+    # ✅ ERROR: Mensaje.texto (minúscula) u otro método inválido
+    def p_sentencia_mensaje_metodo_invalido(self, t):
+        '''sentencia : MENSAJE PUNTO IDENTIFICADOR PARENTESIS_IZQ CADENA_TEXTO PARENTESIS_DER PUNTO_Y_COMA
+                     | MENSAJE PUNTO IDENTIFICADOR PARENTESIS_IZQ expresion PARENTESIS_DER PUNTO_Y_COMA
+                     | MENSAJE PUNTO IDENTIFICADOR PARENTESIS_IZQ PARENTESIS_DER PUNTO_Y_COMA'''
+        linea = t.lineno(1)
+        metodo = t[3]
+        if metodo.lower() == 'texto':
+            self.agregar_mensaje('error', linea, f"¡Eche! Es 'Mensaje.Texto', con mayúscula inicial, no '{metodo}'.")
+        else:
+            self.agregar_mensaje('error', linea, f"¡Qué vaina! 'Mensaje' no tiene un método llamado '{metodo}'.")
+        t[0] = None
     
     def p_expresion_binaria(self, t):
         '''expresion : expresion MAS expresion
@@ -410,7 +444,8 @@ class Compilador:
         var = t[1]
         linea = t.lineno(1)
         if var not in self.tabla_simbolos:
-            t[0] = ('error', var)
+            # Retornar un error especial para que p_sentencia_asignacion lo maneje
+            t[0] = ('error', 'variable_no_definida', var)
         else:
             t[0] = ('variable', var)
     
@@ -431,6 +466,37 @@ class Compilador:
             t[0] = ('capturar', t[3])
         else:
             t[0] = ('error', 'tipo_invalido')
+
+    # ✅ ERROR: Captura sin paréntesis (Captura.Entero)
+    def p_expresion_captura_sin_parens(self, t):
+        'expresion : CAPTURA PUNTO tipo_captura'
+        linea = t.lineno(1)
+        self.agregar_mensaje('error', linea, f"¡Ombe! Te faltaron los paréntesis en Captura.{t[3]}()")
+        t[0] = ('error', 'falta_parens')
+
+    # ✅ ERROR: Falta punto (CapturaEntero)
+    def p_expresion_identificador_parens(self, t):
+        'expresion : IDENTIFICADOR PARENTESIS_IZQ PARENTESIS_DER'
+        linea = t.lineno(1)
+        nombre = t[1]
+        if nombre.startswith('Captura'):
+            self.agregar_mensaje('error', linea, f"¡Eche! Creo que querías decir 'Captura.{nombre[7:]}()'. Te faltó el punto.")
+        else:
+            self.agregar_mensaje('error', linea, f"¡Qué vaina! '{nombre}' no es una función, no le pongas paréntesis.")
+        t[0] = ('error', 'funcion_invalida')
+
+    # ✅ ERROR: Recuperación de paréntesis malformados
+    def p_expresion_error_parens(self, t):
+        'expresion : PARENTESIS_IZQ error PARENTESIS_DER'
+        t[0] = ('error', 'parens_malformados')
+        
+    def p_expresion_error(self, t):
+        'expresion : error'
+        t[0] = ('error', 'general')
+        
+    def p_sentencia_error(self, t):
+        'sentencia : error PUNTO_Y_COMA'
+        t[0] = None
     
     def p_error(self, t):
         if t:
@@ -471,8 +537,11 @@ class Compilador:
                     self.agregar_mensaje('error', linea, 
                         f"¡Qué vaina! Error de sintaxis con '{valor}' en esta línea")
             elif t.type == 'PUNTO_Y_COMA':
-                # ✅ NO reportar error de ; si no hay estructura válida antes
-                pass
+                self.agregar_mensaje('error', linea, f"¡Eche! No esperaba un punto y coma aquí, revisa si te faltó cerrar algo.")
+                # Consume the semicolon (which is current t) and get next token
+                tok = self.parser.token() 
+                self.parser.errok()
+                return tok
             elif t.type in ['PARENTESIS_DER', 'PARENTESIS_IZQ']:
                 self.agregar_mensaje('error', linea, 
                     f"¡Ombe! Falta un paréntesis o está en el lugar equivocado")
@@ -542,559 +611,3 @@ class Compilador:
             return None
         
         return None
-
-# import ply.yacc as yacc
-# from lexer import tokens, analizador_lexico, errores_lexicos, limpiar_errores_lexicos
-
-# class Compilador:
-#     def __init__(self):
-#         self.tabla_simbolos = {}
-#         self.mensajes_consola = []
-#         self.parser = yacc.yacc(module=self, debug=False, write_tables=False)
-#         self.ultima_linea_completa = 0
-#         self.linea_actual = 0
-#         self.errores_reportados = set()
-#         self.lineas_con_error = set()
-#         self.ultimo_error_linea = -1
-    
-#     tokens = tokens
-    
-#     def reset(self):
-#         """Limpia el estado del compilador"""
-#         self.tabla_simbolos.clear()
-#         self.mensajes_consola.clear()
-#         self.ultima_linea_completa = 0
-#         self.linea_actual = 0
-#         self.errores_reportados.clear()
-#         self.lineas_con_error.clear()
-#         self.ultimo_error_linea = -1
-    
-#     def agregar_mensaje(self, tipo, linea, mensaje):
-#         """Agrega un mensaje a la consola evitando duplicados"""
-#         clave_error = (tipo, linea, mensaje)
-#         if clave_error not in self.errores_reportados:
-#             self.mensajes_consola.append({
-#                 'tipo': tipo,
-#                 'linea': linea,
-#                 'mensaje': mensaje
-#             })
-#             if tipo == 'error':
-#                 self.errores_reportados.add(clave_error)
-#                 if isinstance(linea, int):
-#                     self.lineas_con_error.add(linea)
-    
-#     def obtener_estadisticas(self):
-#         """Retorna estadísticas de compilación"""
-#         aciertos = sum(1 for m in self.mensajes_consola if m['tipo'] == 'exito')
-#         errores = sum(1 for m in self.mensajes_consola if m['tipo'] == 'error')
-#         return {'aciertos': aciertos, 'errores': errores}
-    
-#     def analizar(self, codigo):
-#         """Analiza el código y retorna los resultados"""
-#         self.reset()
-#         limpiar_errores_lexicos()
-#         analizador_lexico.lineno = 1
-        
-#         try:
-#             resultado = self.parser.parse(codigo, lexer=analizador_lexico, tracking=True)
-            
-#             # ✅ Agregar errores léxicos a los mensajes (sin duplicar)
-#             for error in errores_lexicos:
-#                 # Verificar si ya existe este error
-#                 ya_existe = any(
-#                     m['tipo'] == error['tipo'] and 
-#                     m['linea'] == error['linea'] and 
-#                     m['mensaje'] == error['mensaje']
-#                     for m in self.mensajes_consola
-#                 )
-#                 if not ya_existe:
-#                     self.mensajes_consola.append(error)
-#                     if 'linea' in error and isinstance(error['linea'], int):
-#                         self.lineas_con_error.add(error['linea'])
-            
-#             self.mensajes_consola.sort(key=lambda x: x['linea'] if isinstance(x['linea'], int) else 999999)
-            
-#             return {
-#                 'exito': True,
-#                 'resultado': resultado,
-#                 'mensajes': self.mensajes_consola,
-#                 'estadisticas': self.obtener_estadisticas()
-#             }
-#         except Exception as e:
-#             for error in errores_lexicos:
-#                 ya_existe = any(
-#                     m['tipo'] == error['tipo'] and 
-#                     m['linea'] == error['linea'] and 
-#                     m['mensaje'] == error['mensaje']
-#                     for m in self.mensajes_consola
-#                 )
-#                 if not ya_existe:
-#                     self.mensajes_consola.append(error)
-            
-#             self.mensajes_consola.sort(key=lambda x: x['linea'] if isinstance(x['linea'], int) else 999999)
-            
-#             return {
-#                 'exito': False,
-#                 'resultado': None,
-#                 'mensajes': self.mensajes_consola,
-#                 'estadisticas': self.obtener_estadisticas()
-#             }
-    
-#     # ============ VALIDACIÓN DE TIPOS ============
-#     def obtener_tipo_expresion(self, expresion):
-#         """Determina el tipo de una expresión con validación estricta"""
-#         if expresion[0] == 'error':
-#             return 'Error'
-        
-#         if expresion[0] == 'numero':
-#             valor = expresion[1]
-#             return 'Entero' if isinstance(valor, int) else 'Real'
-#         elif expresion[0] == 'cadena':
-#             return 'Texto'
-#         elif expresion[0] == 'variable':
-#             variable = expresion[1]
-#             if variable not in self.tabla_simbolos:
-#                 return 'Desconocido'
-            
-#             if self.tabla_simbolos[variable]['valor'] is None:
-#                 return f'!Eche tú que! La variable "{variable}" no tiene valor todavía, ponle algo primero eche nojoda care mondá'
-            
-#             return self.tabla_simbolos.get(variable, {}).get('tipo', 'Desconocido')
-#         elif expresion[0] == 'capturar':
-#             tipo_captura = expresion[1]
-#             return tipo_captura
-#         elif expresion[0] == 'operacion_binaria':
-#             op, izq, der = expresion[1], expresion[2], expresion[3]
-#             tipo_izq = self.obtener_tipo_expresion(izq)
-#             tipo_der = self.obtener_tipo_expresion(der)
-            
-#             if 'Error:' in str(tipo_izq) or 'Error:' in str(tipo_der):
-#                 return tipo_izq if 'Error:' in str(tipo_izq) else tipo_der
-            
-#             if op == '+':
-#                 if tipo_izq == 'Texto' or tipo_der == 'Texto':
-#                     if tipo_izq == 'Texto' and tipo_der == 'Texto':
-#                         return 'Texto'
-#                     else:
-#                         return f'¡Nojoda que! no puedes sumar Texto con {tipo_izq if tipo_izq != "Texto" else tipo_der}'
-#                 else:
-#                     if tipo_izq == 'Entero' and tipo_der == 'Entero':
-#                         return 'Entero'
-#                     else:
-#                         return 'Real'
-#             else:
-#                 if tipo_izq not in ['Entero', 'Real'] or tipo_der not in ['Entero', 'Real']:
-#                     return f'Error: La operación "{op}" solo funciona con números, no con {tipo_izq} y {tipo_der}'
-                
-#                 if tipo_izq == 'Entero' and tipo_der == 'Entero':
-#                     return 'Entero'
-#                 else:
-#                     return 'Real'        
-#         return 'Desconocido'
-    
-#     def obtener_valor_expresion(self, expresion, visitados=None):
-#         """Obtiene el valor real de una expresión (para mostrar en mensajes)"""
-#         if visitados is None:
-#             visitados = set()
-        
-#         if expresion[0] == 'error':
-#             return None
-        
-#         if expresion[0] == 'operacion_binaria':
-#             resultado = self.evaluar_operacion(expresion, visitados)
-#             if resultado is not None:
-#                 if isinstance(resultado, float) and resultado == int(resultado):
-#                     return str(int(resultado))
-#                 return str(resultado)
-#             return "[operación no evaluable]"
-        
-#         elif expresion[0] == 'cadena':
-#             return expresion[1]
-        
-#         elif expresion[0] == 'variable':
-#             variable = expresion[1]
-            
-#             if variable in visitados:
-#                 return f"[{variable}]"
-            
-#             if variable in self.tabla_simbolos and self.tabla_simbolos[variable]['valor'] is not None:
-#                 valor_almacenado = self.tabla_simbolos[variable]['valor']
-#                 visitados.add(variable)
-#                 return self.obtener_valor_expresion(valor_almacenado, visitados)
-#             return f"[{variable}]"
-        
-#         elif expresion[0] == 'numero':
-#             return str(expresion[1])
-        
-#         elif expresion[0] == 'capturar':
-#             tipo_captura = expresion[1]
-#             return f"[Captura.{tipo_captura}()]"
-#         else:
-#             return str(expresion)
-    
-#     def tipos_compatibles(self, tipo_declarado, tipo_expresion):
-#         """Verifica si los tipos son compatibles"""
-#         if 'Error:' in str(tipo_expresion):
-#             return False
-        
-#         compatibilidad = {
-#             'Entero': ['Entero'],
-#             'Real': ['Entero', 'Real'],
-#             'Texto': ['Texto']
-#         }
-#         return tipo_expresion in compatibilidad.get(tipo_declarado, [])
-    
-#     # ============ GRAMÁTICA PLY ============
-#     precedence = (
-#         ('left', 'MAS', 'MENOS'),
-#         ('left', 'POR', 'DIVIDIDO'),
-#     )
-    
-#     def p_programa(self, t):
-#         'programa : lista_sentencias'
-#         t[0] = t[1]
-    
-#     def p_lista_sentencias(self, t):
-#         '''lista_sentencias : lista_sentencias sentencia
-#                             | sentencia'''
-#         if len(t) == 3:
-#             t[0] = t[1] + [t[2]] if t[2] is not None else t[1]
-#         else:
-#             t[0] = [t[1]] if t[1] is not None else []
-    
-#     def p_tipo(self, t):
-#         '''tipo : ENTERO
-#                 | REAL
-#                 | TEXTO'''
-#         t[0] = t[1]
-    
-#     # ✅ Tipo para declaraciones: error fatal si está en minúscula
-#     def p_tipo_declaracion_minuscula(self, t):
-#         '''tipo : IDENTIFICADOR'''
-#         if t[1].lower() in ['texto', 'entero', 'real']:
-#             linea = t.lineno(1)
-#             self.agregar_mensaje('error', linea, 
-#                 f"¡Ombe! '{t[1]}' debe escribirse con mayúscula inicial: '{t[1].capitalize()}'")
-#             t[0] = None  # ← Error fatal, no declarar
-#         else:
-#             t[0] = None
-    
-#     # ✅ Tipo para Captura: reportar error y devolver None
-#     def p_tipo_captura(self, t):
-#         '''tipo_captura : ENTERO
-#                         | REAL
-#                         | TEXTO'''
-#         t[0] = t[1]
-    
-#     def p_tipo_captura_minuscula(self, t):
-#         '''tipo_captura : IDENTIFICADOR'''
-#         if t[1].lower() in ['texto', 'entero', 'real']:
-#             linea = t.lineno(1)
-#             self.agregar_mensaje('error', linea, 
-#                 f"¡Ombe! '{t[1]}' debe escribirse con mayúscula inicial: '{t[1].capitalize()}'")
-#             t[0] = None  # ← Error fatal, NO hacer la asignación
-#         else:
-#             t[0] = None
-    
-#     # ✅ NUEVA REGLA: Manejar declaraciones con ERROR_LEXICO
-#     def p_sentencia_declaracion_error_lexico(self, t):
-#         'sentencia : ERROR_LEXICO tipo PUNTO_Y_COMA'
-#         linea = t.lineno(1)
-#         # El error léxico ya fue reportado, solo ignorar esta sentencia
-#         t[0] = None
-    
-#     def p_sentencia_asignacion_error_lexico(self, t):
-#         'sentencia : ERROR_LEXICO IGUAL expresion PUNTO_Y_COMA'
-#         linea = t.lineno(1)
-#         # El error léxico ya fue reportado, solo ignorar esta sentencia
-#         t[0] = None
-#         'sentencia : IDENTIFICADOR tipo PUNTO_Y_COMA'
-#         var, tipo_var = t[1], t[2]
-#         linea = t.lineno(1)
-        
-#         # Si el tipo es None (error), no procesar
-#         if tipo_var is None:
-#             t[0] = None
-#             return
-        
-#         if var in self.tabla_simbolos:
-#             self.agregar_mensaje('error', linea, f"¡Epa! La variable '{var}' ya la declaraste mano, no la repitas.")
-#             t[0] = None
-#         else:
-#             self.tabla_simbolos[var] = {'tipo': tipo_var, 'valor': None, 'linea': linea}
-#             self.agregar_mensaje('exito', linea, f"¡Bien ahí! Variable '{var}' quedó como {tipo_var}")
-#             t[0] = ('declarar', var, tipo_var)
-#         self.ultima_linea_completa = linea
-    
-#     def p_sentencia_declaracion_sin_punto_y_coma(self, t):
-#         'sentencia : IDENTIFICADOR tipo'
-#         var, tipo_var = t[1], t[2]
-#         linea = t.lineno(1)
-        
-#         # Solo reportar si no hay error previo en esta línea
-#         if linea not in self.lineas_con_error:
-#             self.agregar_mensaje('error', linea, f"¡Ey mi llave! Te faltó el punto y coma (;) después de '{var} {tipo_var}'")
-#         t[0] = None
-    
-#     def p_sentencia_asignacion(self, t):
-#         'sentencia : IDENTIFICADOR IGUAL expresion PUNTO_Y_COMA'
-#         var, expr = t[1], t[3]
-#         linea = t.lineno(1)
-        
-#         if var not in self.tabla_simbolos:
-#             self.agregar_mensaje('error', linea, f"¡Ombe hey! La variable '{var}' no existe, declárala primero apue.")
-#             t[0] = None
-#         else:
-#             tipo_declarado = self.tabla_simbolos[var]['tipo']
-#             tipo_expresion = self.obtener_tipo_expresion(expr)
-            
-#             # ✅ Si la expresión es un error (como Captura con tipo mal escrito), no asignar
-#             if isinstance(expr, tuple) and expr[0] == 'error':
-#                 # El error ya fue reportado, solo no hacer la asignación
-#                 t[0] = None
-#                 return
-            
-#             if isinstance(expr, tuple) and expr[0] == 'capturar':
-#                 tipo_captura = expr[1]
-                
-#                 if tipo_declarado != tipo_captura:
-#                     self.agregar_mensaje('error', linea,
-#                         f"¡Ey vale! No puedes usar Captura.{tipo_captura}() para '{var}' que es {tipo_declarado}")
-#                     t[0] = None
-#                 else:
-#                     self.tabla_simbolos[var]['valor'] = expr
-#                     self.agregar_mensaje('exito', linea, f"¡Tá bueno! Captura.{tipo_captura}() → {var}({tipo_declarado})")
-#                     t[0] = ('asignar', var, expr)
-#             elif 'Error:' in str(tipo_expresion):
-#                 self.agregar_mensaje('error', linea, tipo_expresion)
-#                 t[0] = None
-#             elif not self.tipos_compatibles(tipo_declarado, tipo_expresion):
-#                 self.agregar_mensaje('error', linea,
-#                     f"¡Esa vaina que cole! No puedes meter {tipo_expresion} en '{var}' que es {tipo_declarado}")
-#                 t[0] = None
-#             else:
-#                 self.tabla_simbolos[var]['valor'] = expr
-#                 self.agregar_mensaje('exito', linea, f"¡Tá bueno! {tipo_expresion} → {var}({tipo_declarado})")
-#                 t[0] = ('asignar', var, expr)
-#         self.ultima_linea_completa = linea
-    
-#     def p_sentencia_asignacion_sin_punto_y_coma(self, t):
-#         'sentencia : IDENTIFICADOR IGUAL expresion'
-#         var, expr = t[1], t[3]
-#         linea = t.lineno(1)
-        
-#         # Solo reportar si no hay error previo en esta línea
-#         if linea not in self.lineas_con_error:
-#             self.agregar_mensaje('error', linea, f"¡Ey mi llave! Te faltó el punto y coma (;) después de '{var} = ...'")
-#         t[0] = None
-    
-#     def p_sentencia_mensaje(self, t):
-#         '''sentencia : MENSAJE PUNTO TEXTO PARENTESIS_IZQ CADENA_TEXTO PARENTESIS_DER PUNTO_Y_COMA
-#                      | MENSAJE PUNTO TEXTO PARENTESIS_IZQ expresion PARENTESIS_DER PUNTO_Y_COMA'''
-#         linea = t.lineno(1)
-#         valor_texto = t[5]
-        
-#         es_error = False
-#         error_mensaje = None
-#         valor_mostrar = None
-        
-#         if isinstance(valor_texto, tuple) and valor_texto[0] == 'error':
-#             var_nombre = valor_texto[1]
-#             self.agregar_mensaje('error', linea, f"¡Ombe! La variable '{var_nombre}' no existe, no puedo mostrar un fantasma.")
-#             t[0] = None
-#             self.ultima_linea_completa = linea
-#             return
-        
-#         if isinstance(valor_texto, tuple) and valor_texto[0] == 'capturar':
-#             es_error = True
-#             tipo_captura = valor_texto[1]
-#             error_mensaje = f"¡Ombe! No puedes usar Captura.{tipo_captura}() dentro de Mensaje.Texto()"
-#         elif isinstance(valor_texto, str) and valor_texto == "":
-#             es_error = True
-#             error_mensaje = "¡Joa! Mensaje.Texto está vacío, ponle algo pues."
-#         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'operacion_binaria':
-#             tipo_expresion = self.obtener_tipo_expresion(valor_texto)
-#             if 'Error:' in str(tipo_expresion):
-#                 es_error = True
-#                 error_mensaje = tipo_expresion
-#             else:
-#                 valor_mostrar = self.obtener_valor_expresion(valor_texto)
-#         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'variable':
-#             var_nombre = valor_texto[1]
-#             if var_nombre not in self.tabla_simbolos:
-#                 es_error = True
-#                 error_mensaje = f"¡Ombe! La variable '{var_nombre}' no existe, no puedo mostrar un fantasma."
-#             elif self.tabla_simbolos[var_nombre]['valor'] is None:
-#                 es_error = True
-#                 error_mensaje = f"¡Ombe! La variable '{var_nombre}' no tiene valor, asígnale algo primero."
-#             else:
-#                 valor_mostrar = self.obtener_valor_expresion(valor_texto)
-#         elif isinstance(valor_texto, tuple) and valor_texto[0] == 'cadena':
-#             valor_mostrar = valor_texto[1]
-#             if valor_mostrar == "":
-#                 es_error = True
-#                 error_mensaje = "¡Ombe! vale mía Mensaje.Texto está vacío, ponle algo pues."
-#         else:
-#             valor_mostrar = str(valor_texto)
-        
-#         if es_error:
-#             self.agregar_mensaje('error', linea, error_mensaje)
-#         elif valor_mostrar is not None:
-#             self.agregar_mensaje('exito', linea, f"Nojoda mostro está bueno el valor es \"{valor_mostrar}\"")
-        
-#         t[0] = ('mensaje_texto', t[5])
-#         self.ultima_linea_completa = linea
-    
-#     def p_expresion_binaria(self, t):
-#         '''expresion : expresion MAS expresion
-#                      | expresion MENOS expresion
-#                      | expresion POR expresion
-#                      | expresion DIVIDIDO expresion'''
-#         t[0] = ('operacion_binaria', t[2], t[1], t[3])
-    
-#     def p_expresion_grupo(self, t):
-#         'expresion : PARENTESIS_IZQ expresion PARENTESIS_DER'
-#         t[0] = t[2]
-    
-#     def p_expresion_valor(self, t):
-#         '''expresion : NUMERO_ENTERO
-#                      | NUMERO_REAL'''
-#         t[0] = ('numero', t[1])
-    
-#     def p_expresion_identificador(self, t):
-#         'expresion : IDENTIFICADOR'
-#         var = t[1]
-#         linea = t.lineno(1)
-#         if var not in self.tabla_simbolos:
-#             t[0] = ('error', var)
-#         else:
-#             t[0] = ('variable', var)
-    
-#     def p_expresion_cadena(self, t):
-#         'expresion : CADENA_TEXTO'
-#         t[0] = ('cadena', t[1])
-    
-#     def p_expresion_captura_vacia(self, t):
-#         'expresion : CAPTURA PUNTO tipo_captura PARENTESIS_IZQ PARENTESIS_DER'
-#         if t[3] is not None:
-#             t[0] = ('capturar', t[3])
-#         else:
-#             t[0] = ('error', 'tipo_invalido')
-    
-#     def p_expresion_captura_con_parametro(self, t):
-#         'expresion : CAPTURA PUNTO tipo_captura PARENTESIS_IZQ expresion PARENTESIS_DER'
-#         if t[3] is not None:
-#             t[0] = ('capturar', t[3])
-#         else:
-#             t[0] = ('error', 'tipo_invalido')
-    
-#     def p_error(self, t):
-#         if t:
-#             linea = t.lineno
-#             valor = t.value
-            
-#             # ✅ PRIMERO: Marcar errores léxicos en líneas_con_error
-#             for error in errores_lexicos:
-#                 if 'linea' in error and isinstance(error['linea'], int):
-#                     self.lineas_con_error.add(error['linea'])
-            
-#             # ✅ Si ya hay error en esta línea, NO reportar más
-#             if linea in self.lineas_con_error:
-#                 while True:
-#                     tok = self.parser.token()
-#                     if not tok or tok.type == 'PUNTO_Y_COMA':
-#                         break
-#                 self.parser.errok()
-#                 return tok
-            
-#             # ✅ Si es la misma línea que el último error, ignorar
-#             if linea == self.ultimo_error_linea:
-#                 while True:
-#                     tok = self.parser.token()
-#                     if not tok or tok.type == 'PUNTO_Y_COMA':
-#                         break
-#                 self.parser.errok()
-#                 return tok
-            
-#             self.ultimo_error_linea = linea
-            
-#             # Detectar errores específicos
-#             if t.type == 'IDENTIFICADOR':
-#                 if valor.lower() in ['texto', 'entero', 'real']:
-#                     # Ya se maneja en p_tipo_minuscula
-#                     pass
-#                 else:
-#                     self.agregar_mensaje('error', linea, 
-#                         f"¡Qué vaina! Error de sintaxis con '{valor}' en esta línea")
-#             elif t.type == 'PUNTO_Y_COMA':
-#                 # ✅ NO reportar error de ; si no hay estructura válida antes
-#                 pass
-#             elif t.type in ['PARENTESIS_DER', 'PARENTESIS_IZQ']:
-#                 self.agregar_mensaje('error', linea, 
-#                     f"¡Ombe! Falta un paréntesis o está en el lugar equivocado")
-#             elif t.type in ['MAS', 'MENOS', 'POR', 'DIVIDIDO']:
-#                 self.agregar_mensaje('error', linea, 
-#                     f"¡Qué vaina! El operador '{valor}' no está bien colocado")
-#             else:
-#                 self.agregar_mensaje('error', linea, 
-#                     f"¡Qué vaina! Error de sintaxis con '{valor}' aquí")
-            
-#             # Recuperarse hasta el siguiente punto y coma
-#             while True:
-#                 tok = self.parser.token()
-#                 if not tok or tok.type == 'PUNTO_Y_COMA':
-#                     break
-#             self.parser.errok()
-#             return tok
-#         else:
-#             # Solo reportar EOF si no hay errores
-#             if len(self.lineas_con_error) == 0:
-#                 self.agregar_mensaje('error', '?', 
-#                     "¡Ombe! El archivo terminó de forma inesperada, puede que falte algo")
-    
-#     def evaluar_operacion(self, expresion, visitados=None):
-#         """Evalúa una operación binaria y retorna el resultado numérico"""
-#         if visitados is None:
-#             visitados = set()
-        
-#         if expresion[0] == 'operacion_binaria':
-#             op, izq, der = expresion[1], expresion[2], expresion[3]
-            
-#             val_izq = self.evaluar_operacion(izq, visitados)
-#             val_der = self.evaluar_operacion(der, visitados)
-            
-#             if val_izq is None or val_der is None:
-#                 return None
-            
-#             try:
-#                 if op == '+':
-#                     return val_izq + val_der
-#                 elif op == '-':
-#                     return val_izq - val_der
-#                 elif op == '*':
-#                     return val_izq * val_der
-#                 elif op == '/':
-#                     if val_der == 0:
-#                         return None
-#                     return val_izq / val_der
-#             except:
-#                 return None
-        
-#         elif expresion[0] == 'numero':
-#             return expresion[1]
-        
-#         elif expresion[0] == 'variable':
-#             var = expresion[1]
-            
-#             if var in visitados:
-#                 return None
-            
-#             if var in self.tabla_simbolos and self.tabla_simbolos[var]['valor'] is not None:
-#                 visitados.add(var)
-#                 return self.evaluar_operacion(self.tabla_simbolos[var]['valor'], visitados)
-#             return None
-        
-#         elif expresion[0] == 'capturar':
-#             return None
-        
-#         return None

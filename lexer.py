@@ -54,8 +54,8 @@ t_ignore = ' \t'
 def t_NUMERO_PEGADO_A_LETRA(t):
     r'\d+[a-zA-Z_][a-zA-Z0-9_]*'
     agregar_error_lexico(t.lexer.lineno, f"¡Eche tú que ve! Las variables no pueden empezar con números: '{t.value}'")
-    # NO retornamos el token, lo ignoramos completamente
-    pass
+    t.type = 'IDENTIFICADOR'
+    return t
 
 def t_IDENTIFICADOR(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
